@@ -3,7 +3,6 @@
 #include <iostream>
 #include <spdlog/spdlog.h>
 
-
 CudaWrapper::CudaWrapper() :
     m_GPUCount{0},
     m_ElementCount(0)
@@ -57,15 +56,15 @@ CudaWrapper::CudaWrapper() :
         m_X
     );
 
-}
-
-CudaWrapper::~CudaWrapper()
-{
-    cudnnDestroy(m_Handle);
     spdlog::info("Destroyed cuDNN handle.");
     std::cout << "New array: ";
     for(int i=0;i<m_ElementCount;i++) 
         std::cout << m_X[i] << " ";
     std::cout << std::endl;
     cudaFree(m_X);
+}
+
+CudaWrapper::~CudaWrapper()
+{
+    cudnnDestroy(m_Handle);
 }
