@@ -1,22 +1,23 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <cudnn.h>
+#include <spdlog/spdlog.h>
 
 int main(int argc, char** argv)
 {
     int numGPUs;
     cudaGetDeviceCount(&numGPUs);
-    std::cout << "Found " << numGPUs << " GPUs." << std::endl;
+    spdlog::info("Found {} GPUs", numGPUs);
     cudaSetDevice(0); // use GPU0
     int device; 
     struct cudaDeviceProp devProp;
     cudaGetDevice(&device);
     cudaGetDeviceProperties(&devProp, device);
-    std::cout << "Compute capability:" << devProp.major << "." << devProp.minor << std::endl;
+    spdlog::info("Compute capability: {}.{}", devProp.major, devProp.minor);
 
     cudnnHandle_t handle_;
     cudnnCreate(&handle_);
-    std::cout << "Created cuDNN handle" << std::endl;
+    spdlog::info("Created cuDNN handle");
 
     // create the tensor descriptor
     cudnnDataType_t dtype = CUDNN_DATA_FLOAT;
@@ -30,9 +31,11 @@ int main(int argc, char** argv)
     // create the tensor
     float *x;
     cudaMallocManaged(&x, NUM_ELEMENTS * sizeof(float));
-    for(int i=0;i<NUM_ELEMENTS;i++) x[i] = i * 1.00f;
+    for(int i=0;i<NUM_ELEMENTS;i++) 
+        x[i] = i * 1.00f;
     std::cout << "Original array: "; 
-    for(int i=0;i<NUM_ELEMENTS;i++) std::cout << x[i] << " ";
+    for(int i=0;i<NUM_ELEMENTS;i++) 
+        std::cout << x[i] << " ";
 
     // create activation function descriptor
     float alpha[1] = {1};
@@ -55,9 +58,10 @@ int main(int argc, char** argv)
     );
 
     cudnnDestroy(handle_);
-    std::cout << std::endl << "Destroyed cuDNN handle." << std::endl;
+    spdlog::info("Destroyed cuDNN handle.");
     std::cout << "New array: ";
-    for(int i=0;i<NUM_ELEMENTS;i++) std::cout << x[i] << " ";
+    for(int i=0;i<NUM_ELEMENTS;i++) 
+        std::cout << x[i] << " ";
     std::cout << std::endl;
     cudaFree(x);
     return 0;
