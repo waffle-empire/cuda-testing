@@ -1,3 +1,3 @@
 # cuda-testing
 
-required: cuda, cudnn, cuda-tools
+required: cuda, cudnn, cuda-tools, spdlog
