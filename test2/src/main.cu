@@ -11,7 +11,6 @@
 
 #include <cudnn.h>
 #include <cuda.h>
-#include <cuda_runtime.h>
 #include <stdio.h>
 
 
@@ -71,14 +70,14 @@ __global__ void initGPUData_ker(float *data, int numElements, float value) {
 void initGPUData(float *data, int numElements, float value) {
    dim3 gridDim;
    dim3 blockDim;
-
+   
    blockDim.x = 1024;
    gridDim.x = (numElements + blockDim.x - 1) / blockDim.x;
-
+   
    initGPUData_ker <<< gridDim, blockDim >>> (data, numElements, value);
 }
 
-
+  
 int main(int argc, char* argv[]) {
 
    int seqLength;
@@ -89,12 +88,12 @@ int main(int argc, char* argv[]) {
    float dropout;
    bool bidirectional;
    int mode;
-   int algo_int;
+   int persistent;
 
    FILE *fp;
    fp=fopen("result.txt","w");
 
-   if (argc == 7) {
+   if (argc == 6) {
       seqLength = atoi(argv[1]);
       numLayers = atoi(argv[2]);
       hiddenSize = atoi(argv[3]);
@@ -103,71 +102,70 @@ int main(int argc, char* argv[]) {
       dropout = 0;
       bidirectional = 0;
       mode = atoi(argv[5]);
-      algo_int = atoi(argv[6]);
+      persistent = 0;
    }
    else {
       printf("Usage:\n");
-      printf("./RNN <seqLength> <numLayers> <hiddenSize> <miniBatch> <mode> <algo>\n");
+      printf("./RNN <seqLength> <numLayers> <hiddenSize> <miniBatch> <mode>\n");
       printf("Modes: 0 = RNN_RELU, 1 = RNN_TANH, 2 = LSTM, 3 = GRU\n");
-      printf("Algo: 0 = STANDARD, 1 = STATIC, 2 = DYNAMIC\n");
       return 1;
    }
 
-   // -------------------------
+   // -------------------------   
    // Create cudnn context
-   // -------------------------
-   cudnnHandle_t cudnnHandle;
+   // -------------------------  
+   cudnnHandle_t cudnnHandle;   
    cudnnErrCheck(cudnnCreate(&cudnnHandle));
 
-
-   // -------------------------
+   
+   // -------------------------   
    // Set up inputs and outputs
    // -------------------------
    void *x;
    void *hx = NULL;
    void *cx = NULL;
-
+   
    void *dx;
    void *dhx = NULL;
    void *dcx = NULL;
-
+  
    void *y;
    void *hy = NULL;
    void *cy = NULL;
-
+   
    void *dy;
    void *dhy = NULL;
    void *dcy = NULL;
-
+   
    // Memory allocation. hx, cx, dhx, dcx, hy, cy, dhy and dcy can be NULL.
    cudaErrCheck(cudaMalloc((void**)&x, seqLength * inputSize * miniBatch * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&hx, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&cx, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
-
+   
    cudaErrCheck(cudaMalloc((void**)&dx, seqLength * inputSize * miniBatch * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&dhx, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&dcx, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
-
+   
    cudaErrCheck(cudaMalloc((void**)&y, seqLength * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&hy, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&cy, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
-
+   
    cudaErrCheck(cudaMalloc((void**)&dy, seqLength * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&dhy, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
    cudaErrCheck(cudaMalloc((void**)&dcy, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1) * sizeof(float)));
-
+      
    // Set up tensor descriptors. x/y/dx/dy are arrays, one per time step.
    cudnnTensorDescriptor_t *xDesc, *yDesc, *dxDesc, *dyDesc;
    cudnnTensorDescriptor_t hxDesc, cxDesc;
    cudnnTensorDescriptor_t hyDesc, cyDesc;
    cudnnTensorDescriptor_t dhxDesc, dcxDesc;
    cudnnTensorDescriptor_t dhyDesc, dcyDesc;
-
+   
    xDesc = (cudnnTensorDescriptor_t*)malloc(seqLength * sizeof(cudnnTensorDescriptor_t));
    yDesc = (cudnnTensorDescriptor_t*)malloc(seqLength * sizeof(cudnnTensorDescriptor_t));
    dxDesc = (cudnnTensorDescriptor_t*)malloc(seqLength * sizeof(cudnnTensorDescriptor_t));
    dyDesc = (cudnnTensorDescriptor_t*)malloc(seqLength * sizeof(cudnnTensorDescriptor_t));
-
+   
    int dimA[3];
    int strideA[3];
 
@@ -178,18 +176,18 @@ int main(int argc, char* argv[]) {
       cudnnErrCheck(cudnnCreateTensorDescriptor(&yDesc[i]));
       cudnnErrCheck(cudnnCreateTensorDescriptor(&dxDesc[i]));
       cudnnErrCheck(cudnnCreateTensorDescriptor(&dyDesc[i]));
-
+   
       dimA[0] = miniBatch;
       dimA[1] = inputSize;
       dimA[2] = 1;
-
+     
       strideA[0] = dimA[2] * dimA[1];
       strideA[1] = dimA[2];
       strideA[2] = 1;
 
       cudnnErrCheck(cudnnSetTensorNdDescriptor(xDesc[i], CUDNN_DATA_FLOAT, 3, dimA, strideA));
       cudnnErrCheck(cudnnSetTensorNdDescriptor(dxDesc[i], CUDNN_DATA_FLOAT, 3, dimA, strideA));
-
+      
       dimA[0] = miniBatch;
       dimA[1] = bidirectional ? hiddenSize * 2 : hiddenSize;
       dimA[2] = 1;
@@ -197,20 +195,20 @@ int main(int argc, char* argv[]) {
       strideA[0] = dimA[2] * dimA[1];
       strideA[1] = dimA[2];
       strideA[2] = 1;
-
+      
       cudnnErrCheck(cudnnSetTensorNdDescriptor(yDesc[i], CUDNN_DATA_FLOAT, 3, dimA, strideA));
       cudnnErrCheck(cudnnSetTensorNdDescriptor(dyDesc[i], CUDNN_DATA_FLOAT, 3, dimA, strideA));
    }
-
-
+   
+   
    dimA[0] = numLayers * (bidirectional ? 2 : 1);
    dimA[1] = miniBatch;
    dimA[2] = hiddenSize;
-
+   
    strideA[0] = dimA[2] * dimA[1];
    strideA[1] = dimA[2];
    strideA[2] = 1;
-
+   
    cudnnErrCheck(cudnnCreateTensorDescriptor(&hxDesc));
    cudnnErrCheck(cudnnCreateTensorDescriptor(&cxDesc));
    cudnnErrCheck(cudnnCreateTensorDescriptor(&hyDesc));
@@ -219,7 +217,7 @@ int main(int argc, char* argv[]) {
    cudnnErrCheck(cudnnCreateTensorDescriptor(&dcxDesc));
    cudnnErrCheck(cudnnCreateTensorDescriptor(&dhyDesc));
    cudnnErrCheck(cudnnCreateTensorDescriptor(&dcyDesc));
-
+   
    cudnnErrCheck(cudnnSetTensorNdDescriptor(hxDesc, CUDNN_DATA_FLOAT, 3, dimA, strideA));
    cudnnErrCheck(cudnnSetTensorNdDescriptor(cxDesc, CUDNN_DATA_FLOAT, 3, dimA, strideA));
    cudnnErrCheck(cudnnSetTensorNdDescriptor(hyDesc, CUDNN_DATA_FLOAT, 3, dimA, strideA));
@@ -228,107 +226,97 @@ int main(int argc, char* argv[]) {
    cudnnErrCheck(cudnnSetTensorNdDescriptor(dcxDesc, CUDNN_DATA_FLOAT, 3, dimA, strideA));
    cudnnErrCheck(cudnnSetTensorNdDescriptor(dhyDesc, CUDNN_DATA_FLOAT, 3, dimA, strideA));
    cudnnErrCheck(cudnnSetTensorNdDescriptor(dcyDesc, CUDNN_DATA_FLOAT, 3, dimA, strideA));
-
-
+  
+  
    // -------------------------
    // Set up the dropout descriptor (needed for the RNN descriptor)
    // -------------------------
    unsigned long long seed = 1337ull; // Pick a seed.
-
+   
    cudnnDropoutDescriptor_t dropoutDesc;
    cudnnErrCheck(cudnnCreateDropoutDescriptor(&dropoutDesc));
-
+   
    // How much memory does dropout need for states?
    // These states are used to generate random numbers internally
    // and should not be freed until the RNN descriptor is no longer used
    size_t stateSize;
    void *states;
    cudnnErrCheck(cudnnDropoutGetStatesSize(cudnnHandle, &stateSize));
-
+   
    cudaErrCheck(cudaMalloc(&states, stateSize));
-
-   cudnnErrCheck(cudnnSetDropoutDescriptor(dropoutDesc,
+   
+   cudnnErrCheck(cudnnSetDropoutDescriptor(dropoutDesc, 
                              cudnnHandle,
-                             dropout,
-                             states,
-                             stateSize,
+                             dropout, 
+                             states, 
+                             stateSize, 
                              seed));
-
-   // -------------------------
+                             
+   // -------------------------   
    // Set up the RNN descriptor
    // -------------------------
    cudnnRNNDescriptor_t rnnDesc;
    cudnnRNNMode_t RNNMode;
-
+   cudnnRNNAlgo_t RNNAlgo;
+   
    cudnnErrCheck(cudnnCreateRNNDescriptor(&rnnDesc));
-
+   
    if      (mode == 0) RNNMode = CUDNN_RNN_RELU;
    else if (mode == 1) RNNMode = CUDNN_RNN_TANH;
    else if (mode == 2) RNNMode = CUDNN_LSTM;
    else if (mode == 3) RNNMode = CUDNN_GRU;
-
-   cudnnRNNAlgo_t algo;
-   if      (algo_int == 0) algo = CUDNN_RNN_ALGO_STANDARD;
-   else if (algo_int == 1) algo = CUDNN_RNN_ALGO_PERSIST_STATIC;
-   else if (algo_int == 2) algo = CUDNN_RNN_ALGO_PERSIST_DYNAMIC;
-
-   //cudnnRNNAlgo_t algo = CUDNN_RNN_ALGO_STANDARD;
-   //cudnnRNNAlgo_t algo = CUDNN_RNN_ALGO_PERSIST_STATIC;
-   //cudnnRNNAlgo_t algo = CUDNN_RNN_ALGO_PERSIST_DYNAMIC;
+   
+   // Persistent RNNs are only supported on Pascal+ GPUs.
+   if      (persistent == 0) RNNAlgo = CUDNN_RNN_ALGO_STANDARD;
+   else if (persistent == 1) RNNAlgo = CUDNN_RNN_ALGO_PERSIST_STATIC;
+   else if (persistent == 2) RNNAlgo = CUDNN_RNN_ALGO_PERSIST_DYNAMIC;
+      
    cudnnErrCheck(cudnnSetRNNDescriptor_v6(cudnnHandle,
                                        rnnDesc,
-                                       hiddenSize,
-                                       numLayers,
+                                       hiddenSize, 
+                                       numLayers, 
                                        dropoutDesc,
                                        CUDNN_LINEAR_INPUT, // We can also skip the input matrix transformation
-                                       bidirectional ? CUDNN_BIDIRECTIONAL : CUDNN_UNIDIRECTIONAL,
-                                       RNNMode,
-                                       algo, //CUDNN_RNN_ALGO_STANDARD,
+                                       bidirectional ? CUDNN_BIDIRECTIONAL : CUDNN_UNIDIRECTIONAL, 
+                                       RNNMode, 
+                                       RNNAlgo, // Can be changed to use persistent RNNs on Pascal+ GPUs.
                                        CUDNN_DATA_FLOAT));
-   // EDIT HERE
-   if (algo_int == 2){
-     cudnnPersistentRNNPlan_t rnnDescPlan;
-     cudnnErrCheck(cudnnCreatePersistentRNNPlan(rnnDesc, miniBatch, CUDNN_DATA_FLOAT, &rnnDescPlan));
-     cudnnErrCheck(cudnnSetPersistentRNNPlan(rnnDesc, rnnDescPlan));
-     printf("dynamic set\n");
-   }
-   printf("algo : %d    ", algo);
-
-
+   
+   
    // -------------------------
    // Set up parameters
    // -------------------------
    // This needs to be done after the rnn descriptor is set as otherwise
    // we don't know how many parameters we have to allocate
-   void *w;
-   void *dw;
+   void *w;   
+   void *dw;   
 
    cudnnFilterDescriptor_t wDesc, dwDesc;
-
+   
    cudnnErrCheck(cudnnCreateFilterDescriptor(&wDesc));
    cudnnErrCheck(cudnnCreateFilterDescriptor(&dwDesc));
-
+   
    size_t weightsSize;
    cudnnErrCheck(cudnnGetRNNParamsSize(cudnnHandle, rnnDesc, xDesc[0], &weightsSize, CUDNN_DATA_FLOAT));
-
-   int dimW[3];
+   
+   int dimW[3];   
    dimW[0] =  weightsSize / sizeof(float);
    dimW[1] = 1;
    dimW[2] = 1;
-
-   cudnnErrCheck(cudnnSetFilterNdDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, 3, dimW));
-   cudnnErrCheck(cudnnSetFilterNdDescriptor(dwDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, 3, dimW));
-
+      
+   cudnnErrCheck(cudnnSetFilterNdDescriptor(wDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, 3, dimW));   
+   cudnnErrCheck(cudnnSetFilterNdDescriptor(dwDesc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, 3, dimW));   
+   
    cudaErrCheck(cudaMalloc((void**)&w,  weightsSize));
    cudaErrCheck(cudaMalloc((void**)&dw, weightsSize));
-
-
+   
+   
    // -------------------------
    // Set up work space and reserved memory
-   // -------------------------
+   // -------------------------   
    void *workspace;
-   void *reserveSpace;
-
+   void *reserveSpace;   
+   
    size_t workSize;
    size_t reserveSize;
 
@@ -336,10 +324,10 @@ int main(int argc, char* argv[]) {
    cudnnErrCheck(cudnnGetRNNWorkspaceSize(cudnnHandle, rnnDesc, seqLength, xDesc, &workSize));
    // Only needed in training, shouldn't be touched between passes.
    cudnnErrCheck(cudnnGetRNNTrainingReserveSize(cudnnHandle, rnnDesc, seqLength, xDesc, &reserveSize));
-
+    
    cudaErrCheck(cudaMalloc((void**)&workspace, workSize));
    cudaErrCheck(cudaMalloc((void**)&reserveSpace, reserveSize));
-
+   
    // *********************************************************************************************************
    // Initialise weights and inputs
    // *********************************************************************************************************
@@ -348,12 +336,12 @@ int main(int argc, char* argv[]) {
    initGPUData((float*)x, seqLength * inputSize * miniBatch, 1.f);
    if (hx != NULL) initGPUData((float*)hx, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1), 1.f);
    if (cx != NULL) initGPUData((float*)cx, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1), 1.f);
-
+   
    initGPUData((float*)dy, seqLength * hiddenSize * miniBatch * (bidirectional ? 2 : 1), 1.f);
    if (dhy != NULL) initGPUData((float*)dhy, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1), 1.f);
    if (dcy != NULL) initGPUData((float*)dcy, numLayers * hiddenSize * miniBatch * (bidirectional ? 2 : 1), 1.f);
-
-
+      
+   
    // Weights
    int numLinearLayers = 0;
    if (RNNMode == CUDNN_RNN_RELU || RNNMode == CUDNN_RNN_TANH) {
@@ -365,23 +353,23 @@ int main(int argc, char* argv[]) {
    else if (RNNMode == CUDNN_GRU) {
       numLinearLayers = 6;
    }
-
+   
    for (int layer = 0; layer < numLayers * (bidirectional ? 2 : 1); layer++) {
       for (int linLayerID = 0; linLayerID < numLinearLayers; linLayerID++) {
          cudnnFilterDescriptor_t linLayerMatDesc;
          cudnnErrCheck(cudnnCreateFilterDescriptor(&linLayerMatDesc));
          float *linLayerMat;
-
+         
          cudnnErrCheck(cudnnGetRNNLinLayerMatrixParams( cudnnHandle,
-                                                        rnnDesc,
+                                                        rnnDesc,  
                                                         layer,
-                                                        xDesc[0],
-                                                        wDesc,
+                                                        xDesc[0], 
+                                                        wDesc, 
                                                         w,
-                                                        linLayerID,
-                                                        linLayerMatDesc,
+                                                        linLayerID,  
+                                                        linLayerMatDesc, 
                                                         (void**)&linLayerMat));
-
+         
          cudnnDataType_t dataType;
          cudnnTensorFormat_t format;
          int nbDims;
@@ -392,164 +380,174 @@ int main(int argc, char* argv[]) {
                                                   &format,
                                                   &nbDims,
                                                   filterDimA));
+                                                  
+         initGPUData(linLayerMat, filterDimA[0] * filterDimA[1] * filterDimA[2], 1.f / (float)(filterDimA[0] * filterDimA[1] * filterDimA[2]));                                                 
 
-         initGPUData(linLayerMat, filterDimA[0] * filterDimA[1] * filterDimA[2], 1.f / (float)(filterDimA[0] * filterDimA[1] * filterDimA[2]));
-
-         cudnnErrCheck(cudnnDestroyFilterDescriptor(linLayerMatDesc));
-
+         cudnnErrCheck(cudnnDestroyFilterDescriptor(linLayerMatDesc));         
+         
          cudnnFilterDescriptor_t linLayerBiasDesc;
          cudnnErrCheck(cudnnCreateFilterDescriptor(&linLayerBiasDesc));
          float *linLayerBias;
-
+         
          cudnnErrCheck(cudnnGetRNNLinLayerBiasParams( cudnnHandle,
-                                                        rnnDesc,
+                                                        rnnDesc,  
                                                         layer,
-                                                        xDesc[0],
-                                                        wDesc,
+                                                        xDesc[0], 
+                                                        wDesc, 
                                                         w,
-                                                        linLayerID,
-                                                        linLayerBiasDesc,
+                                                        linLayerID,  
+                                                        linLayerBiasDesc, 
                                                         (void**)&linLayerBias));
-
+         
          cudnnErrCheck(cudnnGetFilterNdDescriptor(linLayerBiasDesc,
                                                   3,
                                                   &dataType,
                                                   &format,
                                                   &nbDims,
                                                   filterDimA));
-
+                                                  
          initGPUData(linLayerBias, filterDimA[0] * filterDimA[1] * filterDimA[2], 1.f);
-
+                                                  
          cudnnErrCheck(cudnnDestroyFilterDescriptor(linLayerBiasDesc));
       }
    }
-
+   
+   // *********************************************************************************************************
+   // Dynamic persistent RNN plan (if using this algo)
+   // *********************************************************************************************************
+   cudnnPersistentRNNPlan_t rnnPlan;
+   if (RNNAlgo == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
+      // Note: This step is expensive. Once completed the plan can be reused so long as the descriptor
+      //       minibatch or datatype don't change.
+      cudnnErrCheck(cudnnCreatePersistentRNNPlan(rnnDesc, miniBatch, CUDNN_DATA_FLOAT, &rnnPlan));
+      // Tell calls using this descriptor which plan to use.
+      cudnnErrCheck(cudnnSetPersistentRNNPlan(rnnDesc, rnnPlan));
+   }
+   
    // *********************************************************************************************************
    // At this point all of the setup is done. We now need to pass through the RNN.
    // *********************************************************************************************************
-
-
-
    cudaErrCheck(cudaDeviceSynchronize());
-
+   
    cudaEvent_t start, stop;
    float timeForward, timeBackward1, timeBackward2;
    cudaErrCheck(cudaEventCreate(&start));
    cudaErrCheck(cudaEventCreate(&stop));
-
-   cudaErrCheck(cudaEventRecord(start));
+   
+   cudaErrCheck(cudaEventRecord(start));   
 
    // If we're not training we use this instead
-   // cudnnErrCheck(cudnnRNNForwardInference(cudnnHandle,
-                                         // rnnDesc,
-                                         // xDesc,
-                                         // x,
+   // cudnnErrCheck(cudnnRNNForwardInference(cudnnHandle, 
+                                         // rnnDesc, 
+                                         // seqLength,                                          
+                                         // xDesc, 
+                                         // x, 
                                          // hxDesc,
-                                         // hx,
-                                         // cxDesc,
-                                         // cx,
-                                         // wDesc,
-                                         // w,
-                                         // yDesc,
-                                         // y,
-                                         // hyDesc,
-                                         // hy,
-                                         // cyDesc,
-                                         // cy,
-                                         // workspace,
+                                         // hx, 
+                                         // cxDesc, 
+                                         // cx, 
+                                         // wDesc, 
+                                         // w, 
+                                         // yDesc,  
+                                         // y, 
+                                         // hyDesc, 
+                                         // hy, 
+                                         // cyDesc, 
+                                         // cy, 
+                                         // workspace, 
                                          // workSize));
 
-   cudnnErrCheck(cudnnRNNForwardTraining(cudnnHandle,
-                                         rnnDesc,
-                                         seqLength,
-                                         xDesc,
-                                         x,
+   cudnnErrCheck(cudnnRNNForwardTraining(cudnnHandle, 
+                                         rnnDesc, 
+                                         seqLength,                                          
+                                         xDesc, 
+                                         x, 
                                          hxDesc,
-                                         hx,
-                                         cxDesc,
-                                         cx,
-                                         wDesc,
-                                         w,
-                                         yDesc,
-                                         y,
-                                         hyDesc,
-                                         hy,
-                                         cyDesc,
-                                         cy,
-                                         workspace,
+                                         hx, 
+                                         cxDesc, 
+                                         cx, 
+                                         wDesc, 
+                                         w, 
+                                         yDesc,  
+                                         y, 
+                                         hyDesc, 
+                                         hy, 
+                                         cyDesc, 
+                                         cy, 
+                                         workspace, 
                                          workSize,
-                                         reserveSpace,
+                                         reserveSpace, 
                                          reserveSize));
-
-   cudaErrCheck(cudaEventRecord(stop));
+                
+   cudaErrCheck(cudaEventRecord(stop));   
    cudaErrCheck(cudaEventSynchronize(stop));
    cudaErrCheck(cudaEventElapsedTime(&timeForward, start, stop));
-
+   
    cudaErrCheck(cudaEventRecord(start));
-
-   cudnnErrCheck(cudnnRNNBackwardData(cudnnHandle,
-                               rnnDesc,
-                               seqLength,
-                               yDesc,
+   
+   cudnnErrCheck(cudnnRNNBackwardData(cudnnHandle, 
+                               rnnDesc, 
+                               seqLength,                                
+                               yDesc, 
                                y,
-                               dyDesc,
-                               dy,
-                               dhyDesc,
-                               dhy,
-                               dcyDesc,
-                               dcy,
-                               wDesc,
-                               w,
-                               hxDesc,
+                               dyDesc, 
+                               dy, 
+                               dhyDesc, 
+                               dhy, 
+                               dcyDesc, 
+                               dcy, 
+                               wDesc, 
+                               w, 
+                               hxDesc, 
                                hx,
-                               cxDesc,
+                               cxDesc, 
                                cx,
-                               dxDesc,
-                               dx,
+                               dxDesc, 
+                               dx, 
                                dhxDesc,
                                dhx,
                                dcxDesc,
                                dcx,
                                workspace,
                                workSize,
-                               reserveSpace,
+                               reserveSpace, 
                                reserveSize ));
-
-   cudaErrCheck(cudaEventRecord(stop));
+   
+   cudaErrCheck(cudaEventRecord(stop));   
    cudaErrCheck(cudaEventSynchronize(stop));
    cudaErrCheck(cudaEventElapsedTime(&timeBackward1, start, stop));
-
+   
    cudaErrCheck(cudaEventRecord(start));
-
+   
    // cudnnRNNBackwardWeights adds to the data in dw.
    cudaErrCheck(cudaMemset(dw, 0, weightsSize));
-
-   cudnnErrCheck(cudnnRNNBackwardWeights( cudnnHandle,
-                                    rnnDesc,
-                                    seqLength,
-                                    xDesc,
-                                    x,
-                                    hxDesc,
-                                    hx,
-                                    yDesc,
+   
+   cudnnErrCheck(cudnnRNNBackwardWeights( cudnnHandle, 
+                                    rnnDesc, 
+                                    seqLength, 
+                                    xDesc, 
+                                    x, 
+                                    hxDesc, 
+                                    hx,                                                   
+                                    yDesc, 
                                     y,
-                                    workspace,
-                                    workSize,
-                                    dwDesc,
+                                    workspace, 
+                                    workSize, 
+                                    dwDesc, 
                                     dw,
-                                    reserveSpace,
+                                    reserveSpace, 
                                     reserveSize ));
+                     
+                     
 
-
-
-   cudaErrCheck(cudaEventRecord(stop));
+   cudaErrCheck(cudaEventRecord(stop));   
 
    cudaErrCheck(cudaEventSynchronize(stop));
    cudaErrCheck(cudaEventElapsedTime(&timeBackward2, start, stop));
 
-
+   
    int numMats = 0;
-
+   
    if (RNNMode == CUDNN_RNN_RELU || RNNMode == CUDNN_RNN_TANH) {
       numMats = 2;
    }
@@ -559,7 +557,7 @@ int main(int argc, char* argv[]) {
    else if (RNNMode == CUDNN_GRU) {
       numMats = 6;
    }
-
+   
    // Calculate FLOPS
    printf("Forward: %3.0f GFLOPS\n", numMats * 2ull * (bidirectional ? 2 : 1) * hiddenSize * hiddenSize * seqLength * miniBatch * numLayers / (1e6 * timeForward));
    printf("Backward: %3.0f GFLOPS, ", numMats * 4ull * (bidirectional ? 2 : 1) * hiddenSize * hiddenSize * seqLength * miniBatch * numLayers / (1e6 * (timeBackward1 + timeBackward2)));
@@ -574,7 +572,7 @@ int main(int argc, char* argv[]) {
 
    // Make double-sure everything is finished before we copy for result checking.
    cudaDeviceSynchronize();
-
+   
    // *********************************************************************************************************
    // Print checksums.
    // *********************************************************************************************************
@@ -582,72 +580,72 @@ int main(int argc, char* argv[]) {
       float* testOutputi;
       float* testOutputh;
       float* testOutputc;
-
+      
       int biDirScale = (bidirectional ? 2 : 1);
-
+      
       testOutputi = (float*)malloc(hiddenSize * seqLength * miniBatch * biDirScale * sizeof(float));
       testOutputh = (float*)malloc(hiddenSize * miniBatch * numLayers * biDirScale * sizeof(float));
       testOutputc = (float*)malloc(hiddenSize * miniBatch * numLayers * biDirScale * sizeof(float));
-
+ 
       cudaErrCheck(cudaMemcpy(testOutputi, y, hiddenSize * seqLength * miniBatch * biDirScale * sizeof(float), cudaMemcpyDeviceToHost));
       if (hy != NULL) cudaErrCheck(cudaMemcpy(testOutputh, hy, numLayers * hiddenSize * miniBatch * biDirScale * sizeof(float), cudaMemcpyDeviceToHost));
       if (cy != NULL && RNNMode == CUDNN_LSTM) cudaErrCheck(cudaMemcpy(testOutputc, cy, numLayers * hiddenSize * miniBatch * biDirScale * sizeof(float), cudaMemcpyDeviceToHost));
-
+      
       double checksumi = 0.f;
       double checksumh = 0.f;
       double checksumc = 0.f;
-
+      
       for (int m = 0; m < miniBatch; m++) {
          double localSumi = 0;
          double localSumh = 0;
          double localSumc = 0;
-
+         
          for (int j = 0; j < seqLength; j++) {
-            for (int i = 0; i < hiddenSize * biDirScale; i++) {
+            for (int i = 0; i < hiddenSize * biDirScale; i++) {   
                localSumi += testOutputi[j * miniBatch * hiddenSize * biDirScale + m * hiddenSize * biDirScale + i];
             }
          }
          for (int j = 0; j < numLayers * biDirScale; j++) {
-            for (int i = 0; i < hiddenSize; i++) {
+            for (int i = 0; i < hiddenSize; i++) {         
                if (hy != NULL) localSumh += testOutputh[j * hiddenSize * miniBatch + m * hiddenSize + i];
                if (cy != NULL) if (RNNMode == CUDNN_LSTM) localSumc += testOutputc[j * hiddenSize * miniBatch + m * hiddenSize + i];
             }
          }
-
+                  
          checksumi += localSumi;
          checksumh += localSumh;
          checksumc += localSumc;
       }
-
+      
       printf("i checksum %E     ", checksumi);
       fprintf(fp,"i checksum %E     ", checksumi);
       if (RNNMode == CUDNN_LSTM) { printf("c checksum %E     ", checksumc); fprintf(fp,"c checksum %E     ", checksumc); }
       printf("h checksum %E\n", checksumh);
       fprintf(fp,"h checksum %E\n", checksumh);
-
+      
       free(testOutputi);
       free(testOutputc);
       free(testOutputh);
-   }
-
+   }   
+   
    if (true) {
       float* testOutputdi;
       float* testOutputdh;
       float* testOutputdc;
 
       int biDirScale = (bidirectional ? 2 : 1);
-
+      
       testOutputdi = (float*)malloc(inputSize * seqLength * miniBatch * sizeof(float));
       testOutputdh = (float*)malloc(hiddenSize * miniBatch * numLayers * biDirScale * sizeof(float));
       testOutputdc = (float*)malloc(hiddenSize * miniBatch * numLayers * biDirScale * sizeof(float));
       cudaErrCheck(cudaMemcpy(testOutputdi, dx, seqLength * miniBatch * inputSize * sizeof(float), cudaMemcpyDeviceToHost));
       if (dhx != NULL) cudaErrCheck(cudaMemcpy(testOutputdh, dhx, numLayers * hiddenSize * miniBatch * biDirScale * sizeof(float), cudaMemcpyDeviceToHost));
       if (dcx != NULL) if (RNNMode == CUDNN_LSTM) cudaErrCheck(cudaMemcpy(testOutputdc, dcx, numLayers * hiddenSize * miniBatch * biDirScale * sizeof(float), cudaMemcpyDeviceToHost));
-
+      
       float checksumdi = 0.f;
       float checksumdh = 0.f;
       float checksumdc = 0.f;
-
+      
       for (int m = 0; m < miniBatch; m++) {
          double localSumdi = 0;
          double localSumdh = 0;
@@ -660,24 +658,24 @@ int main(int argc, char* argv[]) {
          }
 
          for (int j = 0; j < numLayers * biDirScale; j++) {
-            for (int i = 0; i < hiddenSize; i++) {
+            for (int i = 0; i < hiddenSize; i++) {         
                localSumdh += testOutputdh[j * hiddenSize * miniBatch + m * hiddenSize + i];
                if (RNNMode == CUDNN_LSTM) localSumdc += testOutputdc[j * hiddenSize * miniBatch + m * hiddenSize + i];
             }
-         }
+         }         
 
          checksumdi += localSumdi;
          checksumdh += localSumdh;
          checksumdc += localSumdc;
-
+         
       }
-
+      
       printf("di checksum %E    ", checksumdi);
       fprintf(fp,"di checksum %E    ", checksumdi);
       if (RNNMode == CUDNN_LSTM) { printf("dc checksum %E    ", checksumdc); fprintf(fp,"dc checksum %E    ", checksumdc); }
       printf("dh checksum %E\n", checksumdh);
       fprintf(fp,"dh checksum %E\n", checksumdh);
-
+      
       free(testOutputdi);
       free(testOutputdh);
       free(testOutputdc);
@@ -686,21 +684,25 @@ int main(int argc, char* argv[]) {
    if (true) {
       float* testOutputdw;
       testOutputdw = (float*)malloc(weightsSize);
-
+ 
       cudaErrCheck(cudaMemcpy(testOutputdw, dw, weightsSize, cudaMemcpyDeviceToHost));
-
+      
       double checksumdw = 0.;
-
+            
       for (int i = 0; i < weightsSize / sizeof(float); i++) {
          checksumdw += testOutputdw[i];
       }
-
+      
       printf("dw checksum %E\n", checksumdw);
       fprintf(fp,"dw checksum %E\n", checksumdw);
-
+      
       free(testOutputdw);
    }
 
+   if (RNNAlgo == CUDNN_RNN_ALGO_PERSIST_DYNAMIC) {
+      cudnnDestroyPersistentRNNPlan(rnnPlan);
+   }  
+  
    cudaFree(x);
    cudaFree(hx);
    cudaFree(cx);
@@ -717,8 +719,10 @@ int main(int argc, char* argv[]) {
    cudaFree(reserveSpace);
    cudaFree(w);
    cudaFree(dw);
-
+   
    cudnnDestroy(cudnnHandle);
    fclose(fp);
    return 0;
 }
+
+
