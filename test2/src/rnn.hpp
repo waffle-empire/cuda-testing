@@ -33,35 +33,38 @@ private:
     int m_ElementCount;
 
     // Model parameters
+    float m_dropout;
     int m_seqLength;
     int m_numLayers;
     int m_hiddenSize;
     int m_inputSize;
     int m_miniBatch;
-    float m_dropout;
     bool m_bidirectional;
     int m_mode;
     int m_algo_int;
 
     // GPU memory allocations
-    void *m_x;
-    void *m_hx = NULL;
-    void *m_cx = NULL;
+    void* m_x;
+    void* m_hx = nullptr;
+    void* m_cx = nullptr;
 
     void *m_dx;
-    void *m_dhx = NULL;
-    void *m_dcx = NULL;
+    void *m_dhx = nullptr;
+    void *m_dcx = nullptr;
 
     void *m_y;
-    void *m_hy = NULL;
-    void *m_cy = NULL;
+    void *m_hy = nullptr;
+    void *m_cy = nullptr;
 
     void *m_dy;
-    void *m_dhy = NULL;
-    void *m_dcy = NULL;
+    void *m_dhy = nullptr;
+    void *m_dcy = nullptr;
 
     // Tensor descriptors
-    cudnnTensorDescriptor_t *m_xDesc, *m_yDesc, *m_dxDesc, *m_dyDesc;
+    cudnnTensorDescriptor_t* m_xDesc;
+    cudnnTensorDescriptor_t* m_yDesc;
+    cudnnTensorDescriptor_t* m_dxDesc;
+    cudnnTensorDescriptor_t* m_dyDesc;
     cudnnTensorDescriptor_t m_hxDesc, m_cxDesc;
     cudnnTensorDescriptor_t m_hyDesc, m_cyDesc;
     cudnnTensorDescriptor_t m_dhxDesc, m_dcxDesc;
@@ -78,16 +81,16 @@ private:
     cudnnPersistentRNNPlan_t m_rnnPlan;
 
     // parameters
-    void *m_w;
-    void *m_dw;
+    void* m_w;
+    void* m_dw;
     cudnnFilterDescriptor_t m_wDesc, m_dwDesc;
     size_t m_weightsSize;
 
     // workspace memory allocation
     size_t m_workSize;
     size_t m_reserveSize;
-    void *m_workspace;
-    void *m_reserveSpace;
+    void* m_workspace;
+    void* m_reserveSpace;
 
     // something for flops
     int m_numMats;

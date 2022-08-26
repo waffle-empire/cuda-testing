@@ -33,7 +33,7 @@ file(GLOB SOURCE_FILES
     ${PROJECT_SOURCE_DIR}/test2/src/*.cu
 
 )
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61)
 cuda_add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 # add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 # libraries
