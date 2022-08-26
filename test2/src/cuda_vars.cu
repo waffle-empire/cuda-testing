@@ -10,14 +10,16 @@
 
 namespace Wrapper {
 
-   __global__ void initGPUData_ker(float *data, int numElements, float value) {
-      int tid = blockIdx.x * blockDim.x + threadIdx.x;
-      if (tid < numElements) {
+   __global__ void initGPUData_ker(float *data, int numElements, float value) 
+   {
+      const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+      if (tid < numElements) 
+      {
          data[tid] = value;
       }
    }
 
-   void initGPUData(float *data, int numElements, float value) {
+   void initGPUData(float* data, int numElements, float value) {
       dim3 gridDim;
       dim3 blockDim;
 
