@@ -33,7 +33,7 @@ file(GLOB SOURCE_FILES
     ${PROJECT_SOURCE_DIR}/test2/src/*.cu
 
 )
-set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_61,code=sm_61)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75)
 cuda_add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 # add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 # libraries
@@ -44,6 +44,26 @@ target_link_libraries(${PROJECT_NAME}
     spdlog::spdlog_header_only    
 )
 ##### PROJECT 2 #####
+
+##### PROJECT 3 #####
+project(cuda-3 VERSION 0.0.1)
+file(GLOB SOURCE_FILES
+    ${PROJECT_SOURCE_DIR}/test3/src/*.cpp
+    ${PROJECT_SOURCE_DIR}/test3/src/*.cu
+
+)
+set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS} -gencode arch=compute_75,code=sm_75)
+cuda_add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+# add_executable(${PROJECT_NAME} ${SOURCE_FILES})
+# libraries
+include_directories("${PROJECT_SOURCE_DIR}/test3/vendor/csv-parser")
+target_link_libraries(${PROJECT_NAME} 
+    CUDA::cudart
+    "cuda"
+    "cudnn"
+    spdlog::spdlog_header_only
+)
+##### PROJECT 3 #####
 
 
 # set warning level 4 and warnings treated as errors
