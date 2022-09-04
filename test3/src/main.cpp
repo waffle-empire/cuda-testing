@@ -34,7 +34,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    std::filesystem::path input_file = "test3/failures.csv"; // probably wont work like this
+    std::filesystem::path input_file = "../test3/failures.csv";
     RNN* rnn{new RNN(input_file, seqLength, numLayers, hiddenSize, miniBatch, dropout, bidirectional, mode, algo)};
 
     rnn->read_input_file();

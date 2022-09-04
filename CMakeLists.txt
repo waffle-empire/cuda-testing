@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 set_property(GLOBAL PROPERTY CXX_STANDARD 20)
 
+
 ##### GENERAL #####
 project(global) # required to enable findpackage 
 find_package(CUDAToolkit REQUIRED)
